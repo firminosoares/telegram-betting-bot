@@ -331,14 +331,49 @@ def setup_telegram_app():
 # Rotas Flask
 @app.route('/')
 def index():
-    """Rota principal para verificar se o serviço está funcionando."""
-    return jsonify({
-        "status": "online",
-        "bot": BOT_USERNAME,
-        "timestamp": datetime.now().isoformat(),
-        "games_cached": len(games_data) if games_data is not None else 0,
-        "odds_cached": len(odds_data) if odds_data is not None else 0
-    })
+"""Rota principal para verificar se o serviço está funcionando."""
+    return f"""
+    <html>
+    <head>
+        <title>Bot de Apostas - Status</title>
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 40px; }}
+            .status {{ background: #e8f5e8; padding: 20px; border-radius: 8px; }}
+            .button {{ background: #007bff; color: white; padding: 10px 20px; 
+                      text-decoration: none; border-radius: 5px; margin: 10px; 
+                      display: inline-block; }}
+            .button:hover {{ background: #0056b3; }}
+        </style>
+    </head>
+    <body>
+        <h1>🤖 Bot de Apostas no Telegram</h1>
+        
+        <div class="status">
+            <h2>✅ Status: Online</h2>
+            <p><strong>Bot:</strong> @{BOT_USERNAME}</p>
+            <p><strong>Timestamp:</strong> {datetime.now().strftime('%d/%m/%Y %H:%M:%S')}</p>
+            <p><strong>Jogos em cache:</strong> {len(games_data) if games_data is not None else 0}</p>
+            <p><strong>Odds em cache:</strong> {len(odds_data) if odds_data is not None else 0}</p>
+        </div>
+        
+        <h3>🔧 Configuração do Webhook:</h3>
+        <a href="/clear_webhook" class="button">🗑️ Limpar Webhook Atual</a>
+        <a href="/set_webhook" class="button">⚙️ Configurar Novo Webhook</a>
+        
+        <h3>📊 Endpoints Disponíveis:</h3>
+        <ul>
+            <li><a href="/">/</a> - Esta página</li>
+            <li><a href="/health">/health</a> - Health check</li>
+            <li><a href="/webhook">/webhook</a> - Endpoint do webhook (POST)</li>
+            <li><a href="/set_webhook">/set_webhook</a> - Configurar webhook</li>
+            <li><a href="/clear_webhook">/clear_webhook</a> - Limpar webhook</li>
+        </ul>
+        
+        <p><em>Para testar o bot, envie /start para @{BOT_USERNAME} no Telegram</em></p>
+    </body>
+    </html>
+    """
+```
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -362,33 +397,105 @@ def webhook():
         logger.error(f"Erro no webhook: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/set_webhook', methods=['POST'])
+@app.route('/set_webhook', methods=['GET','POST'])
 def set_webhook():
     """Configura o webhook do Telegram."""
     try:
         if not APP_URL:
-            return jsonify({"error": "APP_URL não configurada"}), 400
+            # Tentar obter URL automaticamente
+            app_url = request.host_url.rstrip('/')
+        else:
+            app_url = APP_URL.rstrip('/')
         
-        webhook_url = f"{APP_URL}/webhook"
+        webhook_url = f"{app_url}/webhook"
         
-        # Configurar webhook usando a API do Telegram
-        import requests
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook"
+        # Primeiro, limpar webhook existente
+        clear_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook"
+        clear_response = requests.post(clear_url)
+        
+        # Configurar novo webhook
+        set_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/setWebhook"
         data = {"url": webhook_url}
         
-        response = requests.post(url, json=data)
+        response = requests.post(set_url, json=data)
         result = response.json()
         
         if result.get("ok"):
-            logger.info(f"Webhook configurado para: {webhook_url}")
-            return jsonify({"status": "webhook configured", "url": webhook_url})
+            return f"""
+            <html>
+            <body>
+                <h2>✅ Webhook Configurado com Sucesso!</h2>
+                <p><strong>URL do Webhook:</strong> {webhook_url}</p>
+                <p><strong>Status:</strong> {result.get('description', 'OK')}</p>
+                <p>Agora teste o bot no Telegram enviando /start</p>
+                <a href="/">← Voltar para página inicial</a>
+            </body>
+            </html>
+            """
         else:
-            logger.error(f"Erro ao configurar webhook: {result}")
-            return jsonify({"error": result.get("description", "Unknown error")}), 400
+            return f"""
+            <html>
+            <body>
+                <h2>❌ Erro ao Configurar Webhook</h2>
+                <p><strong>Erro:</strong> {result.get('description', 'Erro desconhecido')}</p>
+                <a href="/">← Voltar para página inicial</a>
+            </body>
+            </html>
+            """
     
     except Exception as e:
-        logger.error(f"Erro ao configurar webhook: {e}")
-        return jsonify({"error": str(e)}), 500
+        return f"""
+        <html>
+        <body>
+            <h2>❌ Erro Interno</h2>
+            <p><strong>Erro:</strong> {str(e)}</p>
+            <a href="/">← Voltar para página inicial</a>
+        </body>
+        </html>
+               """
+```
+
+@app.route('/clear_webhook', methods=['GET', 'POST'])
+def clear_webhook():
+    """Remove o webhook atual do Telegram."""
+    try:
+        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/deleteWebhook"
+        response = requests.post(url)
+        result = response.json()
+        
+        if result.get("ok"):
+            return f"""
+            <html>
+            <body>
+                <h2>✅ Webhook Removido com Sucesso!</h2>
+                <p>O webhook anterior foi removido.</p>
+                <p><a href="/set_webhook">Configurar novo webhook</a></p>
+                <a href="/">← Voltar para página inicial</a>
+            </body>
+            </html>
+            """
+        else:
+            return f"""
+            <html>
+            <body>
+                <h2>❌ Erro ao Remover Webhook</h2>
+                <p><strong>Erro:</strong> {result.get('description', 'Erro desconhecido')}</p>
+                <a href="/">← Voltar para página inicial</a>
+            </body>
+            </html>
+            """
+    
+    except Exception as e:
+        return f"""
+        <html>
+        <body>
+            <h2>❌ Erro Interno</h2>
+            <p><strong>Erro:</strong> {str(e)}</p>
+            <a href="/">← Voltar para página inicial</a>
+        </body>
+        </html>
+        """
+```
 
 @app.route('/health')
 def health():
